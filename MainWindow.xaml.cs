@@ -40,8 +40,17 @@ public partial class MainWindow : System.Windows.Window
     private readonly List<TaskHistoryEntry> _recentTasks = [];
     private readonly Dictionary<string, int> _activeTasksBySource = new(StringComparer.OrdinalIgnoreCase);
     private SpeechBubbleWindow? _speechBubble;
-    private System.Windows.Forms.ToolStripMenuItem? _recentTasksMenu;
     private System.Windows.Forms.ToolStripMenuItem? _replayReportMenuItem;
+    private System.Windows.Forms.ToolStripMenuItem? _trayClickThroughItem;
+    private System.Windows.Controls.ContextMenu? _petMenu;
+    private System.Windows.Controls.MenuItem? _petReplayItem;
+    private System.Windows.Controls.MenuItem? _petRecentMenu;
+    private System.Windows.Controls.MenuItem? _petFpsMenu;
+    private System.Windows.Controls.MenuItem? _petScaleMenu;
+    private System.Windows.Controls.MenuItem? _petTopmostItem;
+    private System.Windows.Controls.MenuItem? _petBubbleItem;
+    private System.Windows.Controls.MenuItem? _petClickThroughItem;
+    private System.Windows.Controls.MenuItem? _petSoundItem;
     private ActivityUpdate? _lastBubbleUpdate;
     private readonly MediaPlayer _soundPlayer = new();
     private PetState? _lastSoundState;
@@ -94,7 +103,12 @@ public partial class MainWindow : System.Windows.Window
         MouseLeftButtonDown += OnMouseLeftButtonDown;
         MouseMove += OnMouseMove;
         MouseLeftButtonUp += OnMouseLeftButtonUp;
-        MouseRightButtonUp += (_, _) => _trayMenu.Show(System.Windows.Forms.Cursor.Position);
+        MouseRightButtonUp += (_, e) =>
+        {
+            _petMenu ??= BuildPetMenu();
+            _petMenu.IsOpen = true;
+            e.Handled = true;
+        };
         CompositionTarget.Rendering += OnRendering;
     }
 
@@ -117,6 +131,7 @@ public partial class MainWindow : System.Windows.Window
                 Topmost = Topmost,
             };
             SetDisplayedState(PetState.Idle, $"待機中 · {_settings.TargetFps}fps");
+            _petMenu = BuildPetMenu();
 
             _eventBusWatcher.ActivityChanged += OnActivityChanged;
             _eventBusWatcher.Start();
@@ -399,6 +414,8 @@ public partial class MainWindow : System.Windows.Window
         }
     }
 
+    // トレイメニューはクリック透過中の救済用に最小限へ縮小。フル機能はペット
+    // 右クリックの WPF カスタムメニュー (BuildPetMenu) が持つ。
     private System.Windows.Forms.ContextMenuStrip BuildTrayMenu()
     {
         var menu = new System.Windows.Forms.ContextMenuStrip();
@@ -410,101 +427,208 @@ public partial class MainWindow : System.Windows.Window
         _replayReportMenuItem.Click += (_, _) => ReplayReport(_lastBubbleUpdate);
         menu.Items.Add(_replayReportMenuItem);
 
-        _recentTasksMenu = new System.Windows.Forms.ToolStripMenuItem("最近の完了報告");
-        _recentTasksMenu.DropDownItems.Add(new System.Windows.Forms.ToolStripMenuItem("まだ報告はありません")
+        _trayClickThroughItem = new System.Windows.Forms.ToolStripMenuItem("クリックを背面へ通す")
         {
-            Enabled = false,
-        });
-        menu.Items.Add(_recentTasksMenu);
+            CheckOnClick = true,
+        };
+        _trayClickThroughItem.Click += (_, _) => ToggleClickThrough(_trayClickThroughItem.Checked);
+        menu.Items.Add(_trayClickThroughItem);
+
         menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
+        menu.Items.Add("終了", null, (_, _) => Close());
+        menu.Opening += (_, _) => _trayClickThroughItem.Checked = _settings.ClickThrough;
+        return menu;
+    }
 
-        var states = new System.Windows.Forms.ToolStripMenuItem("モーション");
-        AddStateItem(states, "待機", PetState.Idle);
-        AddStateItem(states, "作業中", PetState.Running);
-        AddStateItem(states, "入力待ち", PetState.Waiting);
-        AddStateItem(states, "確認中", PetState.Review);
-        AddStateItem(states, "完了", PetState.Jumping);
-        AddStateItem(states, "失敗", PetState.Failed);
-        AddStateItem(states, "手を振る", PetState.Waving);
-        menu.Items.Add(states);
+    // ------------------------------------------------------------------
+    // ペット右クリックの WPF カスタムメニュー (App.xaml の PetContextMenu スタイル)
 
-        var fps = new System.Windows.Forms.ToolStripMenuItem("表示FPS");
+    private System.Windows.Controls.MenuItem NewMenuItem(
+        string header,
+        System.Windows.RoutedEventHandler? click = null,
+        bool checkable = false)
+    {
+        var item = new System.Windows.Controls.MenuItem
+        {
+            Header = header,
+            Style = (System.Windows.Style)FindResource("PetMenuItem"),
+            IsCheckable = checkable,
+            StaysOpenOnClick = false,
+        };
+        if (click is not null)
+        {
+            item.Click += click;
+        }
+        return item;
+    }
+
+    private System.Windows.Controls.Separator NewSeparator() => new()
+    {
+        Style = (System.Windows.Style)FindResource("PetMenuSeparator"),
+    };
+
+    private System.Windows.Controls.ContextMenu BuildPetMenu()
+    {
+        var menu = new System.Windows.Controls.ContextMenu
+        {
+            Style = (System.Windows.Style)FindResource("PetContextMenu"),
+            Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint,
+        };
+        menu.Opened += (_, _) => RefreshPetMenu();
+
+        _petReplayItem = NewMenuItem("最新の報告を再表示", (_, _) => ReplayReport(_lastBubbleUpdate));
+        menu.Items.Add(_petReplayItem);
+        _petRecentMenu = NewMenuItem("最近の完了報告");
+        menu.Items.Add(_petRecentMenu);
+        menu.Items.Add(NewSeparator());
+
+        var motions = NewMenuItem("モーション");
+        foreach (var (label, state) in new[]
+                 {
+                     ("待機", PetState.Idle),
+                     ("作業中", PetState.Running),
+                     ("入力待ち", PetState.Waiting),
+                     ("確認中", PetState.Review),
+                     ("完了", PetState.Jumping),
+                     ("失敗", PetState.Failed),
+                     ("手を振る", PetState.Waving),
+                 })
+        {
+            var captured = state;
+            motions.Items.Add(NewMenuItem(label, (_, _) =>
+            {
+                _temporaryStateTimer.Stop();
+                _activityState = captured;
+                SetDisplayedState(captured);
+            }));
+        }
+        menu.Items.Add(motions);
+
+        _petFpsMenu = NewMenuItem("表示FPS");
         foreach (var value in new[] { 8, 16, 30, 32, 60, 120 })
         {
-            var item = new System.Windows.Forms.ToolStripMenuItem($"{value} fps") { Tag = value };
-            item.Click += (_, _) =>
+            var captured = value;
+            var item = NewMenuItem($"{value} fps", (_, _) =>
             {
-                _settings.TargetFps = value;
+                _settings.TargetFps = captured;
                 _settings.Save();
-                UpdateMenuChecks();
-                SetDisplayedState(_activityState, $"表示 {value}fps");
-            };
-            fps.DropDownItems.Add(item);
+                SetDisplayedState(_activityState, $"表示 {captured}fps");
+            }, checkable: true);
+            item.Tag = value;
+            _petFpsMenu.Items.Add(item);
         }
-        menu.Items.Add(fps);
+        menu.Items.Add(_petFpsMenu);
 
-        var scale = new System.Windows.Forms.ToolStripMenuItem("表示倍率（元素材基準）");
+        _petScaleMenu = NewMenuItem("表示倍率");
         foreach (var value in new[] { 1.5, 2.0, 2.5, 3.0 })
         {
+            var captured = value;
             var sourceScale = CellWidth * value / NormalSourceWidth;
-            var item = new System.Windows.Forms.ToolStripMenuItem($"{sourceScale:0.00}×")
-            {
-                Tag = value,
-                ToolTipText = $"通常元素材 {NormalSourceWidth:0}×{NormalSourceHeight:0}px に対する表示倍率",
-            };
-            item.Click += (_, _) => ApplyScale(value);
-            scale.DropDownItems.Add(item);
+            var item = NewMenuItem($"{sourceScale:0.00}×", (_, _) => ApplyScale(captured), checkable: true);
+            item.Tag = value;
+            _petScaleMenu.Items.Add(item);
         }
-        menu.Items.Add(scale);
+        menu.Items.Add(_petScaleMenu);
+        menu.Items.Add(NewSeparator());
 
-        var topmost = new System.Windows.Forms.ToolStripMenuItem("常に最前面") { CheckOnClick = true };
-        topmost.Click += (_, _) =>
+        _petTopmostItem = NewMenuItem("常に最前面", (_, _) =>
         {
-            Topmost = topmost.Checked;
+            Topmost = _petTopmostItem!.IsChecked;
             if (_speechBubble is not null)
             {
                 _speechBubble.Topmost = Topmost;
             }
             _settings.Topmost = Topmost;
             _settings.Save();
-        };
-        menu.Items.Add(topmost);
+        }, checkable: true);
+        menu.Items.Add(_petTopmostItem);
 
-        var speechBubble = new System.Windows.Forms.ToolStripMenuItem("吹き出しを表示") { CheckOnClick = true };
-        speechBubble.Click += (_, _) =>
+        _petBubbleItem = NewMenuItem("吹き出しを表示", (_, _) =>
         {
-            _settings.ShowSpeechBubble = speechBubble.Checked;
+            _settings.ShowSpeechBubble = _petBubbleItem!.IsChecked;
             if (_speechBubble is not null)
             {
-                _speechBubble.Enabled = speechBubble.Checked;
+                _speechBubble.Enabled = _settings.ShowSpeechBubble;
             }
             _settings.Save();
-        };
-        menu.Items.Add(speechBubble);
+        }, checkable: true);
+        menu.Items.Add(_petBubbleItem);
 
-        var clickThrough = new System.Windows.Forms.ToolStripMenuItem("クリックを背面へ通す") { CheckOnClick = true };
-        clickThrough.Click += (_, _) => ToggleClickThrough(clickThrough.Checked);
-        menu.Items.Add(clickThrough);
+        _petClickThroughItem = NewMenuItem("クリックを背面へ通す", (_, _) =>
+            ToggleClickThrough(_petClickThroughItem!.IsChecked), checkable: true);
+        menu.Items.Add(_petClickThroughItem);
 
-        var sound = new System.Windows.Forms.ToolStripMenuItem("通知音を鳴らす") { CheckOnClick = true };
-        sound.Click += (_, _) =>
+        _petSoundItem = NewMenuItem("通知音を鳴らす", (_, _) =>
         {
-            _settings.SoundEnabled = sound.Checked;
+            _settings.SoundEnabled = _petSoundItem!.IsChecked;
             _settings.Save();
-        };
-        menu.Items.Add(sound);
+        }, checkable: true);
+        menu.Items.Add(_petSoundItem);
+        menu.Items.Add(NewSeparator());
 
-        menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
-        menu.Items.Add("設定フォルダを開く (素材/音)", null, (_, _) => OpenConfigFolder());
-        menu.Items.Add("素材を再読み込み", null, (_, _) => ReloadAssets());
-        menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
-        menu.Items.Add("終了", null, (_, _) => Close());
-        menu.Opening += (_, _) =>
-        {
-            UpdateRecentTasksMenu();
-            UpdateMenuChecks();
-        };
+        menu.Items.Add(NewMenuItem("設定フォルダを開く (素材/音)", (_, _) => OpenConfigFolder()));
+        menu.Items.Add(NewMenuItem("素材を再読み込み", (_, _) => ReloadAssets()));
+        menu.Items.Add(NewSeparator());
+        menu.Items.Add(NewMenuItem("終了", (_, _) => Close()));
         return menu;
+    }
+
+    private void RefreshPetMenu()
+    {
+        if (_petReplayItem is not null)
+        {
+            _petReplayItem.IsEnabled = _lastBubbleUpdate is not null;
+        }
+        if (_petTopmostItem is not null) _petTopmostItem.IsChecked = Topmost;
+        if (_petBubbleItem is not null) _petBubbleItem.IsChecked = _settings.ShowSpeechBubble;
+        if (_petClickThroughItem is not null) _petClickThroughItem.IsChecked = _settings.ClickThrough;
+        if (_petSoundItem is not null) _petSoundItem.IsChecked = _settings.SoundEnabled;
+        if (_petFpsMenu is not null)
+        {
+            foreach (System.Windows.Controls.MenuItem item in _petFpsMenu.Items)
+            {
+                item.IsChecked = item.Tag is int value && value == _settings.TargetFps;
+            }
+        }
+        if (_petScaleMenu is not null)
+        {
+            foreach (System.Windows.Controls.MenuItem item in _petScaleMenu.Items)
+            {
+                item.IsChecked = item.Tag is double value && Math.Abs(value - _settings.Scale) < 0.01;
+            }
+        }
+        RefreshPetRecentMenu();
+    }
+
+    private void RefreshPetRecentMenu()
+    {
+        if (_petRecentMenu is null)
+        {
+            return;
+        }
+
+        _petRecentMenu.Items.Clear();
+        if (_recentTasks.Count == 0)
+        {
+            var empty = NewMenuItem("まだ報告はありません");
+            empty.IsEnabled = false;
+            _petRecentMenu.Items.Add(empty);
+            return;
+        }
+
+        foreach (var entry in _recentTasks)
+        {
+            var mark = entry.Update.State == PetState.Failed ? "!" : "✓";
+            var taskName = string.IsNullOrWhiteSpace(entry.Update.TaskName)
+                ? entry.Update.Source
+                : entry.Update.TaskName;
+            var report = entry.Update;
+            var item = NewMenuItem(
+                $"{mark} {entry.CompletedAt.ToLocalTime():HH:mm} {TruncateMenuText(taskName!, 34)}",
+                (_, _) => ReplayReport(report));
+            item.ToolTip = entry.Update.Message ?? string.Empty;
+            _petRecentMenu.Items.Add(item);
+        }
     }
 
     private void AddRecentTask(ActivityUpdate update)
@@ -525,40 +649,6 @@ public partial class MainWindow : System.Windows.Window
         }
     }
 
-    private void UpdateRecentTasksMenu()
-    {
-        if (_recentTasksMenu is null)
-        {
-            return;
-        }
-
-        _recentTasksMenu.DropDownItems.Clear();
-        if (_recentTasks.Count == 0)
-        {
-            _recentTasksMenu.DropDownItems.Add(new System.Windows.Forms.ToolStripMenuItem("まだ報告はありません")
-            {
-                Enabled = false,
-            });
-            return;
-        }
-
-        foreach (var entry in _recentTasks)
-        {
-            var mark = entry.Update.State == PetState.Failed ? "!" : "✓";
-            var taskName = string.IsNullOrWhiteSpace(entry.Update.TaskName)
-                ? entry.Update.Source
-                : entry.Update.TaskName;
-            var item = new System.Windows.Forms.ToolStripMenuItem(
-                $"{mark} {entry.CompletedAt.ToLocalTime():HH:mm} {TruncateMenuText(taskName, 34)}")
-            {
-                ToolTipText = entry.Update.Message ?? string.Empty,
-            };
-            var report = entry.Update;
-            item.Click += (_, _) => ReplayReport(report);
-            _recentTasksMenu.DropDownItems.Add(item);
-        }
-    }
-
     private void ReplayReport(ActivityUpdate? update)
     {
         if (update is null)
@@ -575,47 +665,6 @@ public partial class MainWindow : System.Windows.Window
         _speechBubble?.ShowActivity(update with { ShowInSpeechBubble = true });
     }
 
-    private void AddStateItem(System.Windows.Forms.ToolStripMenuItem parent, string label, PetState state)
-    {
-        parent.DropDownItems.Add(label, null, (_, _) =>
-        {
-            _temporaryStateTimer.Stop();
-            _activityState = state;
-            SetDisplayedState(state);
-        });
-    }
-
-    private void UpdateMenuChecks()
-    {
-        foreach (System.Windows.Forms.ToolStripItem item in _trayMenu.Items)
-        {
-            if (item is not System.Windows.Forms.ToolStripMenuItem menuItem)
-            {
-                continue;
-            }
-
-            if (menuItem.Text == "常に最前面") menuItem.Checked = Topmost;
-            if (menuItem.Text == "吹き出しを表示") menuItem.Checked = _settings.ShowSpeechBubble;
-            if (menuItem.Text == "クリックを背面へ通す") menuItem.Checked = _settings.ClickThrough;
-            if (menuItem.Text == "通知音を鳴らす") menuItem.Checked = _settings.SoundEnabled;
-
-            if (menuItem.Text == "表示FPS")
-            {
-                foreach (System.Windows.Forms.ToolStripMenuItem child in menuItem.DropDownItems)
-                {
-                    child.Checked = child.Tag is int value && value == _settings.TargetFps;
-                }
-            }
-            else if (menuItem.Text == "表示倍率（元素材基準）")
-            {
-                foreach (System.Windows.Forms.ToolStripMenuItem child in menuItem.DropDownItems)
-                {
-                    child.Checked = child.Tag is double value && Math.Abs(value - _settings.Scale) < 0.01;
-                }
-            }
-        }
-    }
-
     private void ApplyScale(double scale, bool save = true)
     {
         _settings.Scale = scale;
@@ -628,7 +677,6 @@ public partial class MainWindow : System.Windows.Window
         if (save)
         {
             _settings.Save();
-            UpdateMenuChecks();
         }
     }
 
@@ -677,7 +725,6 @@ public partial class MainWindow : System.Windows.Window
         {
             _settings.Save();
         }
-        UpdateMenuChecks();
     }
 
     private void OnClosed(object? sender, EventArgs e)
