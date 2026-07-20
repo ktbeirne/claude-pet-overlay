@@ -1,0 +1,15 @@
+# build outputs
+bin/
+obj/
+dist/
+*.user
+
+# 作業領域 (WAN 生成の中間成果物・QA)
+work/
+
+# 実キャラ素材はリポジトリに含めない (ビルド時は Assets/Frames.placeholder が使われる)
+Assets/Frames/
+
+# 個人環境の素材生成パイプラインと開発メモ (ローカル専用)
+tools/wan/
+DEVELOPMENT.md

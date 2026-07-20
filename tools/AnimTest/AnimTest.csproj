@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 本体を ProjectReference すると 276MB のフレーム素材が出力へコピーされるため、
+         テスト対象のソースだけをリンクする -->
+    <Compile Include="..\..\Services\AnimationPlayer.cs" Link="AnimationPlayer.cs" />
+    <Compile Include="..\..\Models\PetState.cs" Link="PetState.cs" />
+  </ItemGroup>
+</Project>
