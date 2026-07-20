@@ -3,6 +3,7 @@ bin/
 obj/
 dist/
 *.user
+__pycache__/
 
 # 作業領域 (WAN 生成の中間成果物・QA)
 work/
