@@ -55,11 +55,16 @@ public partial class SpeechBubbleWindow : System.Windows.Window
         }
     }
 
-    public void ShowActivity(ActivityUpdate update)
+    /// <summary>
+    /// 吹き出しを更新する。一過性状態 (jumping / failed / waving) を表示して
+    /// 自動クローズタイマーを張った場合はその表示時間を返す。呼び出し側は
+    /// この時間だけモーションをループさせることで吹き出しと同期できる。
+    /// </summary>
+    public TimeSpan? ShowActivity(ActivityUpdate update)
     {
         if (!_enabled)
         {
-            return;
+            return null;
         }
 
         if (!update.ShowInSpeechBubble
@@ -71,11 +76,11 @@ public partial class SpeechBubbleWindow : System.Windows.Window
             // タイマー満了で自然に閉じる。
             if (_hideTimer.IsEnabled)
             {
-                return;
+                return null;
             }
             _elapsedTimer.Stop();
             Hide();
-            return;
+            return null;
         }
 
         _hideTimer.Stop();
@@ -126,9 +131,12 @@ public partial class SpeechBubbleWindow : System.Windows.Window
 
         if (update.State is PetState.Jumping or PetState.Failed or PetState.Waving)
         {
-            _hideTimer.Interval = TimeSpan.FromSeconds(update.State == PetState.Jumping ? 9 : 8);
+            var hold = TimeSpan.FromSeconds(update.State == PetState.Jumping ? 9 : 8);
+            _hideTimer.Interval = hold;
             _hideTimer.Start();
+            return hold;
         }
+        return null;
     }
 
     private void UpdateMetadata()

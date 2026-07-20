@@ -193,7 +193,7 @@ public partial class MainWindow : System.Windows.Window
                 : update.State == PetState.Idle && totalActiveTasks > 0 ? PetState.Running : update.State;
             var displayedState = transient ? update.State : _activityState;
             SetDisplayedState(displayedState, update.Message ?? $"{update.Source}: {update.State.DisplayName()}");
-            _speechBubble?.ShowActivity(displayUpdate);
+            var bubbleHold = _speechBubble?.ShowActivity(displayUpdate);
             PlayStateSound(update.State);
 
             if (update.State is PetState.Jumping or PetState.Failed
@@ -212,17 +212,19 @@ public partial class MainWindow : System.Windows.Window
                 AddRecentTask(displayUpdate);
             }
 
+            // 一過性モーションは吹き出しが消えるまでループさせる。吹き出しが
+            // 出なかった場合 (サイレント・吹き出しオフ) はアニメ 1 周分だけ。
             if (update.State == PetState.Jumping)
             {
-                StartTemporaryState(_animation.DurationSeconds(PetState.Jumping));
+                StartTemporaryState(bubbleHold?.TotalSeconds ?? _animation.DurationSeconds(PetState.Jumping));
             }
             else if (update.State == PetState.Failed)
             {
-                StartTemporaryState(Math.Max(5, _animation.DurationSeconds(PetState.Failed)));
+                StartTemporaryState(bubbleHold?.TotalSeconds ?? Math.Max(5, _animation.DurationSeconds(PetState.Failed)));
             }
             else if (update.State == PetState.Waving)
             {
-                StartTemporaryState(_animation.DurationSeconds(PetState.Waving));
+                StartTemporaryState(bubbleHold?.TotalSeconds ?? _animation.DurationSeconds(PetState.Waving));
             }
         });
     }
@@ -251,6 +253,7 @@ public partial class MainWindow : System.Windows.Window
 
     private void StartTemporaryState(double seconds)
     {
+        _temporaryStateTimer.Stop();
         _temporaryStateTimer.Interval = TimeSpan.FromSeconds(seconds);
         _temporaryStateTimer.Start();
     }
@@ -662,7 +665,14 @@ public partial class MainWindow : System.Windows.Window
             return;
         }
 
-        _speechBubble?.ShowActivity(update with { ShowInSpeechBubble = true });
+        var hold = _speechBubble?.ShowActivity(update with { ShowInSpeechBubble = true });
+        // 再表示でも吹き出しと同期してモーションを再演する
+        if (hold is { } duration
+            && update.State is PetState.Jumping or PetState.Failed or PetState.Waving)
+        {
+            SetDisplayedState(update.State);
+            StartTemporaryState(duration.TotalSeconds);
+        }
     }
 
     private void ApplyScale(double scale, bool save = true)
