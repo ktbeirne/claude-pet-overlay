@@ -17,9 +17,15 @@ public sealed class PetEventBusWatcher : IDisposable
 
     public PetEventBusWatcher()
     {
-        var directory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".agent-activity");
+        // フック (claude_pet_hook.py) と同じ規則で解決する: 既定は
+        // <ユーザープロファイル>\.agent-activity、環境変数 CLAUDE_PET_ACTIVITY_DIR
+        // があれば両者ともそちらを使う (片側だけ上書きされるとバスがズレるため)。
+        var overrideDirectory = Environment.GetEnvironmentVariable("CLAUDE_PET_ACTIVITY_DIR");
+        var directory = string.IsNullOrWhiteSpace(overrideDirectory)
+            ? Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                ".agent-activity")
+            : overrideDirectory;
         Directory.CreateDirectory(directory);
         _eventPath = Path.Combine(directory, EventFileName);
         if (!File.Exists(_eventPath))
