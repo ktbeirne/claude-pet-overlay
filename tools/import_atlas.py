@@ -54,6 +54,7 @@ def main(
     output: Path,
     fps_overrides: dict[str, float] | None = None,
     duration_overrides: dict[str, list[float]] | None = None,
+    frame_overrides: dict[str, list[int]] | None = None,
 ) -> None:
     animation = load_animation(package)
     sheet = load_sheet(package)
@@ -72,11 +73,18 @@ def main(
         if state not in REQUIRED_STATES:
             continue
         row = spec["row"]
+        frame_columns = list(spec["frames"])
+        selection = (frame_overrides or {}).get(state)
+        if selection is not None:
+            invalid = [index for index in selection if not 0 <= index < len(frame_columns)]
+            if invalid:
+                raise RuntimeError(f"{state}: frame index out of range 0-{len(frame_columns) - 1}: {invalid}")
+            frame_columns = [frame_columns[index] for index in selection]
         state_dir = output / state
         state_dir.mkdir(parents=True, exist_ok=True)
         for stale in state_dir.glob("*"):
             stale.unlink()
-        for position, column in enumerate(spec["frames"]):
+        for position, column in enumerate(frame_columns):
             cell = sheet.crop((
                 column * cell_w,
                 row * cell_h,
@@ -88,17 +96,24 @@ def main(
             clean_rgba(cell).save(state_dir / f"frame_{position:03d}.png", optimize=True)
         durations = (duration_overrides or {}).get(state)
         if durations is not None:
-            if len(durations) != len(spec["frames"]):
+            if len(durations) != len(frame_columns):
                 raise RuntimeError(
-                    f"{state}: durations count {len(durations)} != frame count {len(spec['frames'])}")
+                    f"{state}: durations count {len(durations)} != frame count {len(frame_columns)}")
             (state_dir / "durations.txt").write_text(
                 ",".join(f"{value:g}" for value in durations) + "\n", encoding="ascii")
-            print(f"{state}: {len(spec['frames'])} frames, durations {durations}ms", flush=True)
+            print(f"{state}: {len(frame_columns)} frames, durations {durations}ms", flush=True)
         else:
             state_fps = (fps_overrides or {}).get(state, fps)
             (state_dir / "fps.txt").write_text(f"{state_fps:g}\n", encoding="ascii")
-            print(f"{state}: {len(spec['frames'])} frames @ {state_fps:g}fps", flush=True)
+            print(f"{state}: {len(frame_columns)} frames @ {state_fps:g}fps", flush=True)
     print(f"imported -> {output}", flush=True)
+
+
+def parse_frames_override(token: str) -> tuple[str, list[int]]:
+    state, _, value = token.partition("=")
+    if not state or not value:
+        raise argparse.ArgumentTypeError(f"expected state=i,i,..., got: {token}")
+    return state, [int(item) for item in value.split(",") if item]
 
 
 def parse_durations_override(token: str) -> tuple[str, list[float]]:
@@ -130,5 +145,9 @@ if __name__ == "__main__":
     parser.add_argument("--durations", type=parse_durations_override, action="append", default=[],
                         metavar="STATE=MS,MS,...",
                         help="状態別のフレーム表示ミリ秒列 (fps より優先。例: --durations idle=3000,350,350,350,350,350)")
+    parser.add_argument("--frames", type=parse_frames_override, action="append", default=[],
+                        metavar="STATE=I,I,...",
+                        help="状態別に使用するコマ番号 (0始まり、間引き・並べ替え。例: --frames idle=0,3)")
     arguments = parser.parse_args()
-    main(arguments.package, arguments.output, dict(arguments.fps), dict(arguments.durations))
+    main(arguments.package, arguments.output,
+         dict(arguments.fps), dict(arguments.durations), dict(arguments.frames))
