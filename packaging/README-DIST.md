@@ -45,10 +45,6 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 「素材を再読み込み」で反映されます。状態単位で差し替え可能。
 各フォルダ内の `readme.txt` にも同じ手順が書いてあります。
 
-フレームフォルダ形式の再生タイミングは `timing.yaml` (`fps: 8` または
-`durations_ms: [5000, 250]`) で指定します (.txt 形式も可ですが、txt を自動暗号化
-する社内環境では読めないため yaml 推奨)。
-
 1. **スプライトシート形式**: `idle.png` (フレームがグリッド状に並んだ 1 枚) +
    任意の `idle.json`:
    ```json
@@ -56,7 +52,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
    ```
    フレームごとの表示時間を変える場合は `"durationsMs": [800, 120, ...]`。
 2. **フレームフォルダ形式**: `idle\frame_000.png, frame_001.png, ...`
-   (+ 任意の `fps.txt` または `durations.txt`)
+   (+ 任意の `timing.yaml`: `fps: 8` または `durations_ms: [5000, 250]`)
 
 状態名: `idle` `running` (作業中) `running-right` `running-left` (ドラッグ中)
 `waving` `jumping` (完了報告) `failed` `waiting` `review`。

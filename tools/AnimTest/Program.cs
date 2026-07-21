@@ -1,16 +1,6 @@
-// AnimationPlayer の素材 fps (fps.txt) / 可変フレーム時間 (durations.txt) /
-// カスタム素材 (customRoot) の検証ハーネス。
+// AnimationPlayer の timing.yaml / カスタム素材 (customRoot) の検証ハーネス。
 // 使い方: AnimTest <framesRoot> [customRoot]
-//   framesRoot には 9 状態のフォルダが必要。前提とするテストデータ:
-//     idle:    4 枚 + fps.txt "8"
-//     running: 4 枚 + fps.txt "16"
-//     waving:  4 枚 (fps.txt なし -> 既定 60)
-//     failed:  4 枚 + fps.txt "abc" (壊れた値 -> 既定 60)
-//     waiting: 4 枚 + durations.txt "100,200,300,400" (可変時間再生)
-//     jumping: 4 枚 + durations.txt "100,200" (個数不一致 -> 無視して fps 経路)
-//   customRoot を渡すと再ロードしてカスタム素材経路も検証する。前提:
-//     review.png (4 フレーム横並びシート) + review.json {"columns":4,"fps":8}
-//     waving\frame_*.png 2 枚 + fps.txt "10" (フォルダ形式カスタム)
+// テストデータは make_fixtures.py で生成する (前提の一覧もそちらに記載)。
 // 全チェック成功で exit 0、失敗で exit 1。
 
 using System.Windows.Media.Imaging;
@@ -41,10 +31,11 @@ if (args.Length < 1)
 var player = new AnimationPlayer();
 player.Load(args[0]);
 
-Console.WriteLine("[fps.txt の読み取り]");
+Console.WriteLine("[timing.yaml fps の読み取り]");
 Check("idle = 8fps", Math.Abs(player.ClipFps(PetState.Idle) - 8) < 1e-9, $"got {player.ClipFps(PetState.Idle)}");
 Check("running = 16fps", Math.Abs(player.ClipFps(PetState.Running) - 16) < 1e-9, $"got {player.ClipFps(PetState.Running)}");
-Check("waving = 既定 60fps", Math.Abs(player.ClipFps(PetState.Waving) - 60) < 1e-9, $"got {player.ClipFps(PetState.Waving)}");
+Check("running-left = 4fps", Math.Abs(player.ClipFps(PetState.RunningLeft) - 4) < 1e-9, $"got {player.ClipFps(PetState.RunningLeft)}");
+Check("waving (yaml なし) = 既定 60fps", Math.Abs(player.ClipFps(PetState.Waving) - 60) < 1e-9, $"got {player.ClipFps(PetState.Waving)}");
 Check("failed (不正値) = 既定 60fps", Math.Abs(player.ClipFps(PetState.Failed) - 60) < 1e-9, $"got {player.ClipFps(PetState.Failed)}");
 
 Console.WriteLine("[DurationSeconds]");
@@ -66,7 +57,7 @@ var firstFour = frames.Take(4).ToArray();
 Check("t=0..0.375 の 4 フレームが相異なる", firstFour.Distinct().Count() == 4);
 Check("t=0.5 で先頭フレームへラップ", ReferenceEquals(frames[0], frames[4]));
 
-Console.WriteLine("[durations.txt (waiting 4 枚 = 100,200,300,400ms)]");
+Console.WriteLine("[durations_ms フロー形式 (waiting = 100,200,300,400ms)]");
 Check("可変時間が有効", player.HasVariableTimings(PetState.Waiting));
 Check("DurationSeconds = 1.0s", Math.Abs(player.DurationSeconds(PetState.Waiting) - 1.0) < 1e-9, $"got {player.DurationSeconds(PetState.Waiting)}");
 // 区間: f0 = [0, 0.1), f1 = [0.1, 0.3), f2 = [0.3, 0.6), f3 = [0.6, 1.0), 1.0 でラップ。
@@ -83,17 +74,14 @@ Check("t=0.15 で 2 枚目へ", !ReferenceEquals(waitFrames[1], waitFrames[2]));
 Check("t=0.05/0.15/0.45/0.75 が相異なる", waitFrames.Skip(1).Take(4).Distinct().Count() == 4);
 Check("t=1.05 で先頭フレームへラップ", ReferenceEquals(waitFrames[0], waitFrames[5]));
 
-Console.WriteLine("[durations.txt 個数不一致 (jumping) -> fps 経路]");
+Console.WriteLine("[durations_ms 個数不一致 (jumping) -> 既定 60fps 経路]");
 Check("可変時間は無効", !player.HasVariableTimings(PetState.Jumping));
 Check("DurationSeconds = 4/60s", Math.Abs(player.DurationSeconds(PetState.Jumping) - 4.0 / 60.0) < 1e-9, $"got {player.DurationSeconds(PetState.Jumping)}");
 
-Console.WriteLine("[timing.yaml (running-right = durations_ms ブロック 100..400)]");
-Check("yaml の可変時間が有効", player.HasVariableTimings(PetState.RunningRight));
+Console.WriteLine("[durations_ms ブロック形式+コメント行 (running-right = 100..400)]");
+Check("可変時間が有効", player.HasVariableTimings(PetState.RunningRight));
 Check("DurationSeconds = 1.0s", Math.Abs(player.DurationSeconds(PetState.RunningRight) - 1.0) < 1e-9, $"got {player.DurationSeconds(PetState.RunningRight)}");
 Check("RequiredDisplayFps = 10 (最短 100ms)", Math.Abs(player.RequiredDisplayFps(PetState.RunningRight) - 10) < 1e-9, $"got {player.RequiredDisplayFps(PetState.RunningRight)}");
-
-Console.WriteLine("[timing.yaml と fps.txt の競合 (running-left) -> yaml 優先]");
-Check("fps = 4 (yaml)", Math.Abs(player.ClipFps(PetState.RunningLeft) - 4) < 1e-9, $"got {player.ClipFps(PetState.RunningLeft)}");
 
 if (args.Length > 1)
 {
@@ -113,7 +101,7 @@ if (args.Length > 1)
     Check("waving フレーム数 = 2", player.FrameCounts()[PetState.Waving] == 2, $"got {player.FrameCounts()[PetState.Waving]}");
     Check("waving fps = 10", Math.Abs(player.ClipFps(PetState.Waving) - 10) < 1e-9, $"got {player.ClipFps(PetState.Waving)}");
     Check("idle は組み込みのまま", !player.IsCustom(PetState.Idle));
-    Check("idle の fps.txt が再ロード後も有効", Math.Abs(player.ClipFps(PetState.Idle) - 8) < 1e-9);
+    Check("idle の timing.yaml が再ロード後も有効", Math.Abs(player.ClipFps(PetState.Idle) - 8) < 1e-9);
 }
 
 Console.WriteLine();

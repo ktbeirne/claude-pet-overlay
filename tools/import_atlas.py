@@ -6,7 +6,7 @@
   - animation-*.json: {"fps", "atlas": {columns, rows, cell_width, cell_height},
                        "states": {"<state>": {"row": n, "frames": [..]}}}
 
-9 状態それぞれを <出力>/<state>/frame_XXX.png + fps.txt に展開する。
+9 状態それぞれを <出力>/<state>/frame_XXX.png + timing.yaml に展開する。
 look_directions 等のペット未使用行は無視する。
 
 使い方: python import_atlas.py <パッケージdir> <出力framesdir> [--fps state=N ...]
@@ -80,8 +80,6 @@ def main(
             if invalid:
                 raise RuntimeError(f"{state}: frame index out of range 0-{len(frame_columns) - 1}: {invalid}")
             frame_columns = [frame_columns[index] for index in selection]
-        # タイミングは timing.yaml に書く。fps.txt / durations.txt (.txt) は
-        # 企業ポリシーの自動暗号化で読めなくなる事例があるため配布素材では使わない。
         state_dir = output / state
         state_dir.mkdir(parents=True, exist_ok=True)
         for stale in state_dir.glob("*"):

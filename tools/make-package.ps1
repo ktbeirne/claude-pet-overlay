@@ -20,9 +20,7 @@ if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
 # 1. self-contained publish (.NET ランタイム不要)
-# 単一 exe (PublishSingleFile) は使わない: WPF は初回起動時にネイティブ DLL を
-# %TEMP% へ自己展開するため、企業 AV に全量スキャン/ブロックされて
-# 「プロセスはあるのに窓が出ない・起動が異常に遅い」事故になる (実報告あり)。
+# PublishSingleFile は使わない (WPF はネイティブ DLL を初回起動時に自己展開するため起動が遅い)
 dotnet publish (Join-Path $project 'ClaudePetOverlay.csproj') `
     -c Release -r win-x64 --self-contained true `
     -p:Version=$Version `

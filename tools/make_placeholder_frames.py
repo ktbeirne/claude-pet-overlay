@@ -159,7 +159,7 @@ def main(output_root: Path) -> None:
         for index in range(FRAMES):
             frame = draw_frame(state, config, index)
             frame.save(state_dir / f"frame_{index:03d}.png", optimize=True)
-        (state_dir / "fps.txt").write_text(f"{FPS}\n", encoding="ascii")
+        (state_dir / "timing.yaml").write_text(f"fps: {FPS}\n", encoding="ascii")
         print(f"{state}: {FRAMES} frames", flush=True)
     print(f"placeholder frames -> {output_root}", flush=True)
 

@@ -9,15 +9,15 @@ namespace ClaudePetOverlay.Services;
 
 public sealed class AnimationPlayer
 {
-    // 各状態フォルダの fps.txt (数値 1 行) で素材レートを宣言できる。
-    // 無ければ 60fps (RIFE 補間済み素材)。WAN 原画 (8/16/32fps 等) を補間なしで
-    // 置いてもそのレートで正しい速度で再生される。
-    // さらに durations.txt (フレームごとの表示ミリ秒をカンマまたは改行区切りで列挙、
-    // 個数はフレーム数と一致) があれば fps 指定より優先して非等間隔で再生する。
+    // 各状態フォルダの timing.yaml で再生タイミングを宣言する:
+    //   fps: 8                       (等間隔)
+    //   durations_ms: [5000, 250]    (フレームごとの表示ミリ秒。個数一致必須。
+    //                                 ブロック形式 "- 値" も可)
+    // 無ければ 60fps。
     //
     // カスタム素材: Load に customRoot を渡すと、状態ごとに以下を組み込み素材より
     // 優先して読む。
-    //   1. <customRoot>\<state>\frame_*.png (フォルダ形式。fps.txt / durations.txt 対応)
+    //   1. <customRoot>\<state>\frame_*.png (フォルダ形式。timing.yaml 対応)
     //   2. <customRoot>\<state>.png (スプライトシート形式。<state>.json でメタ指定:
     //      columns / rows / frameCount / fps / durationsMs。json が無ければ
     //      セルのアスペクト比 576:624 を仮定して列数を推定する)
@@ -118,13 +118,9 @@ public sealed class AnimationPlayer
             throw new InvalidOperationException($"Animation frames are missing: {folder}");
         }
 
-        // 優先順: timing.yaml > durations.txt > fps.txt。
-        // 配布素材は timing.yaml を使う: 企業ポリシーの自動暗号化が .txt を
-        // 対象にして読めなくなり、既定 60fps で爆速再生になる実害があった。
-        var yaml = ReadTimingYaml(folder, paths.Length);
+        var (fps, timing) = ReadTimingYaml(folder, paths.Length);
         _clipFrameCounts[state] = paths.Length;
-        _clipFps[state] = yaml.Fps ?? ReadClipFps(folder);
-        var timing = yaml.Timing ?? ReadClipDurations(folder, paths.Length);
+        _clipFps[state] = fps ?? DefaultSourceFps;
         if (timing is { } value)
         {
             _clipTimings[state] = value;
@@ -230,41 +226,8 @@ public sealed class AnimationPlayer
     // ------------------------------------------------------------------
     // タイミング設定の読み取り
 
-    private static double ReadClipFps(string folder)
-    {
-        var fpsPath = Path.Combine(folder, "fps.txt");
-        try
-        {
-            if (File.Exists(fpsPath)
-                && double.TryParse(
-                    File.ReadAllText(fpsPath).Trim(),
-                    NumberStyles.Float,
-                    CultureInfo.InvariantCulture,
-                    out var fps)
-                && fps > 0)
-            {
-                return Math.Clamp(fps, MinSourceFps, MaxSourceFps);
-            }
-        }
-        catch (IOException)
-        {
-            // A locked or unreadable fps.txt falls back to the default rate.
-        }
-        catch (UnauthorizedAccessException)
-        {
-            // Same fallback as above.
-        }
-        return DefaultSourceFps;
-    }
-
-    // timing.yaml (最小サブセット):
-    //   fps: 8
-    //   durations_ms: [5000, 250]      # フロー形式
-    //   durations_ms:                  # ブロック形式も可
-    //     - 5000
-    //     - 250
-    // durations_ms の個数はフレーム数と一致必須。読めない/壊れている場合は
-    // (null, null) を返して txt 経路へフォールバックする。
+    // YAML はキー 2 つの最小サブセットだけを自前で読む (依存追加を避ける)。
+    // 読めない/壊れている場合は (null, null) = 既定レート。
     private static (double? Fps, ClipTiming? Timing) ReadTimingYaml(string folder, int frameCount)
     {
         var path = Path.Combine(folder, "timing.yaml");
@@ -362,51 +325,6 @@ public sealed class AnimationPlayer
     private static bool TryParseDouble(string token, out double value) =>
         double.TryParse(token.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out value);
 
-    private static ClipTiming? ReadClipDurations(string folder, int frameCount)
-    {
-        var durationsPath = Path.Combine(folder, "durations.txt");
-        try
-        {
-            if (!File.Exists(durationsPath))
-            {
-                return null;
-            }
-
-            var tokens = File.ReadAllText(durationsPath)
-                .Split([',', '\n', '\r', ';', ' ', '\t'], StringSplitOptions.RemoveEmptyEntries);
-            if (tokens.Length != frameCount)
-            {
-                return null; // フレーム数と合わない宣言は無視して fps 再生へフォールバック
-            }
-
-            var seconds = new double[frameCount];
-            var total = 0.0;
-            for (var index = 0; index < frameCount; index++)
-            {
-                if (!double.TryParse(
-                        tokens[index],
-                        NumberStyles.Float,
-                        CultureInfo.InvariantCulture,
-                        out var milliseconds)
-                    || milliseconds <= 0)
-                {
-                    return null;
-                }
-                seconds[index] = Math.Clamp(milliseconds, MinFrameDurationMs, MaxFrameDurationMs) / 1000.0;
-                total += seconds[index];
-            }
-            return new ClipTiming(seconds, total);
-        }
-        catch (IOException)
-        {
-            return null;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return null;
-        }
-    }
-
     // ------------------------------------------------------------------
     // 再生
 
@@ -460,8 +378,7 @@ public sealed class AnimationPlayer
     public double ClipFps(PetState state) =>
         _clipFps.TryGetValue(state, out var fps) ? fps : DefaultSourceFps;
 
-    // そのクリップを取りこぼしなく表示するのに必要なレート。
-    // durations 指定時は最短フレームから導出する (fps.txt の既定値 60 に引きずられない)。
+    // そのクリップを取りこぼしなく表示するのに必要なレート (durations 指定時は最短フレームから導出)。
     public double RequiredDisplayFps(PetState state) =>
         _clipTimings.TryGetValue(state, out var timing)
             ? 1.0 / timing.FrameSeconds.Min()
