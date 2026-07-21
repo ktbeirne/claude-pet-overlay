@@ -34,9 +34,9 @@ if ($FramesDir) {
     Copy-Item -Recurse -Force $FramesDir $framesDest
     Write-Host "frames: $FramesDir"
 } else {
-    # コミット済みのプレースホルダ素材を使う (python 不要でパッケージできる)
-    Copy-Item -Recurse -Force (Join-Path $project 'Assets\Frames.placeholder') $framesDest
-    Write-Host 'frames: placeholder'
+    # コミット済みの既定スプライト (ラフポメ) を使う
+    Copy-Item -Recurse -Force (Join-Path $project 'Assets\Frames.default') $framesDest
+    Write-Host 'frames: default (rough-pomeranian)'
 }
 
 # 3. フックとインストーラ
