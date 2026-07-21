@@ -118,9 +118,13 @@ public sealed class AnimationPlayer
             throw new InvalidOperationException($"Animation frames are missing: {folder}");
         }
 
+        // 優先順: timing.yaml > durations.txt > fps.txt。
+        // 配布素材は timing.yaml を使う: 企業ポリシーの自動暗号化が .txt を
+        // 対象にして読めなくなり、既定 60fps で爆速再生になる実害があった。
+        var yaml = ReadTimingYaml(folder, paths.Length);
         _clipFrameCounts[state] = paths.Length;
-        _clipFps[state] = ReadClipFps(folder);
-        var timing = ReadClipDurations(folder, paths.Length);
+        _clipFps[state] = yaml.Fps ?? ReadClipFps(folder);
+        var timing = yaml.Timing ?? ReadClipDurations(folder, paths.Length);
         if (timing is { } value)
         {
             _clipTimings[state] = value;
@@ -252,6 +256,111 @@ public sealed class AnimationPlayer
         }
         return DefaultSourceFps;
     }
+
+    // timing.yaml (最小サブセット):
+    //   fps: 8
+    //   durations_ms: [5000, 250]      # フロー形式
+    //   durations_ms:                  # ブロック形式も可
+    //     - 5000
+    //     - 250
+    // durations_ms の個数はフレーム数と一致必須。読めない/壊れている場合は
+    // (null, null) を返して txt 経路へフォールバックする。
+    private static (double? Fps, ClipTiming? Timing) ReadTimingYaml(string folder, int frameCount)
+    {
+        var path = Path.Combine(folder, "timing.yaml");
+        string[] lines;
+        try
+        {
+            if (!File.Exists(path))
+            {
+                return (null, null);
+            }
+            lines = File.ReadAllLines(path);
+        }
+        catch (IOException)
+        {
+            return (null, null);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return (null, null);
+        }
+
+        double? fps = null;
+        List<double>? durations = null;
+        var inDurationsBlock = false;
+        foreach (var rawLine in lines)
+        {
+            var line = rawLine.Split('#')[0].TrimEnd();
+            if (line.Trim().Length == 0)
+            {
+                continue;
+            }
+            var trimmed = line.Trim();
+            if (inDurationsBlock && trimmed.StartsWith("- ", StringComparison.Ordinal))
+            {
+                if (!TryParseDouble(trimmed[2..], out var item))
+                {
+                    return (null, null);
+                }
+                durations!.Add(item);
+                continue;
+            }
+            inDurationsBlock = false;
+
+            if (trimmed.StartsWith("fps:", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!TryParseDouble(trimmed[4..], out var value) || value < MinSourceFps || value > MaxSourceFps)
+                {
+                    return (null, null);
+                }
+                fps = value;
+            }
+            else if (trimmed.StartsWith("durations_ms:", StringComparison.OrdinalIgnoreCase))
+            {
+                durations = new List<double>();
+                var rest = trimmed["durations_ms:".Length..].Trim();
+                if (rest.Length == 0)
+                {
+                    inDurationsBlock = true; // ブロック形式: 続く "- 値" 行を読む
+                    continue;
+                }
+                if (!rest.StartsWith('[') || !rest.EndsWith(']'))
+                {
+                    return (null, null);
+                }
+                foreach (var token in rest[1..^1].Split(',', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    if (!TryParseDouble(token, out var item))
+                    {
+                        return (null, null);
+                    }
+                    durations.Add(item);
+                }
+            }
+        }
+
+        ClipTiming? timing = null;
+        if (durations is not null)
+        {
+            if (durations.Count != frameCount || durations.Any(value => value <= 0))
+            {
+                return (null, null);
+            }
+            var seconds = new double[frameCount];
+            var total = 0.0;
+            for (var index = 0; index < frameCount; index++)
+            {
+                seconds[index] = Math.Clamp(durations[index], MinFrameDurationMs, MaxFrameDurationMs) / 1000.0;
+                total += seconds[index];
+            }
+            timing = new ClipTiming(seconds, total);
+        }
+        return (fps, timing);
+    }
+
+    private static bool TryParseDouble(string token, out double value) =>
+        double.TryParse(token.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out value);
 
     private static ClipTiming? ReadClipDurations(string folder, int frameCount)
     {

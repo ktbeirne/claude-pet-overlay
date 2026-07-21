@@ -19,10 +19,13 @@ $stage = Join-Path $dist "stage\ClaudePetOverlay-$Version"
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
-# 1. self-contained single-file publish (.NET ランタイム不要の exe)
+# 1. self-contained publish (.NET ランタイム不要)
+# 単一 exe (PublishSingleFile) は使わない: WPF は初回起動時にネイティブ DLL を
+# %TEMP% へ自己展開するため、企業 AV に全量スキャン/ブロックされて
+# 「プロセスはあるのに窓が出ない・起動が異常に遅い」事故になる (実報告あり)。
 dotnet publish (Join-Path $project 'ClaudePetOverlay.csproj') `
     -c Release -r win-x64 --self-contained true `
-    -p:PublishSingleFile=true -p:Version=$Version `
+    -p:Version=$Version `
     -o (Join-Path $stage 'app') --nologo
 if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed' }
 

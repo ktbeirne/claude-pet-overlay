@@ -59,7 +59,7 @@ if ($Startup) {
 }
 
 # 6. 起動
-Start-Process -FilePath $exePath
+Start-Process -FilePath $exePath -WorkingDirectory $appDir
 Write-Host ''
 Write-Host 'インストール完了。デスクトップ右下にペットが表示されます。'
 Write-Host 'Claude Code への反応は、次に起動するセッションから有効になります。'

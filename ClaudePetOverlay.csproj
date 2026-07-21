@@ -12,7 +12,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="Assets\Frames\**\*.png;Assets\Frames\**\fps.txt;Assets\Frames\**\durations.txt">
+    <Content Include="Assets\Frames\**\*.png;Assets\Frames\**\fps.txt;Assets\Frames\**\durations.txt;Assets\Frames\**\timing.yaml">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

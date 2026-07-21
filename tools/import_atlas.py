@@ -80,6 +80,8 @@ def main(
             if invalid:
                 raise RuntimeError(f"{state}: frame index out of range 0-{len(frame_columns) - 1}: {invalid}")
             frame_columns = [frame_columns[index] for index in selection]
+        # タイミングは timing.yaml に書く。fps.txt / durations.txt (.txt) は
+        # 企業ポリシーの自動暗号化で読めなくなる事例があるため配布素材では使わない。
         state_dir = output / state
         state_dir.mkdir(parents=True, exist_ok=True)
         for stale in state_dir.glob("*"):
@@ -94,18 +96,20 @@ def main(
             if not np.asarray(cell)[..., 3].any():
                 raise RuntimeError(f"{state}: cell row={row} col={column} is empty")
             clean_rgba(cell).save(state_dir / f"frame_{position:03d}.png", optimize=True)
+
         durations = (duration_overrides or {}).get(state)
         if durations is not None:
             if len(durations) != len(frame_columns):
                 raise RuntimeError(
                     f"{state}: durations count {len(durations)} != frame count {len(frame_columns)}")
-            (state_dir / "durations.txt").write_text(
-                ",".join(f"{value:g}" for value in durations) + "\n", encoding="ascii")
-            print(f"{state}: {len(frame_columns)} frames, durations {durations}ms", flush=True)
+            body = "durations_ms: [" + ", ".join(f"{value:g}" for value in durations) + "]\n"
+            summary = f"durations {durations}ms"
         else:
             state_fps = (fps_overrides or {}).get(state, fps)
-            (state_dir / "fps.txt").write_text(f"{state_fps:g}\n", encoding="ascii")
-            print(f"{state}: {len(frame_columns)} frames @ {state_fps:g}fps", flush=True)
+            body = f"fps: {state_fps:g}\n"
+            summary = f"@ {state_fps:g}fps"
+        (state_dir / "timing.yaml").write_text(body, encoding="ascii")
+        print(f"{state}: {len(frame_columns)} frames {summary}", flush=True)
     print(f"imported -> {output}", flush=True)
 
 

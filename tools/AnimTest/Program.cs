@@ -87,6 +87,14 @@ Console.WriteLine("[durations.txt 個数不一致 (jumping) -> fps 経路]");
 Check("可変時間は無効", !player.HasVariableTimings(PetState.Jumping));
 Check("DurationSeconds = 4/60s", Math.Abs(player.DurationSeconds(PetState.Jumping) - 4.0 / 60.0) < 1e-9, $"got {player.DurationSeconds(PetState.Jumping)}");
 
+Console.WriteLine("[timing.yaml (running-right = durations_ms ブロック 100..400)]");
+Check("yaml の可変時間が有効", player.HasVariableTimings(PetState.RunningRight));
+Check("DurationSeconds = 1.0s", Math.Abs(player.DurationSeconds(PetState.RunningRight) - 1.0) < 1e-9, $"got {player.DurationSeconds(PetState.RunningRight)}");
+Check("RequiredDisplayFps = 10 (最短 100ms)", Math.Abs(player.RequiredDisplayFps(PetState.RunningRight) - 10) < 1e-9, $"got {player.RequiredDisplayFps(PetState.RunningRight)}");
+
+Console.WriteLine("[timing.yaml と fps.txt の競合 (running-left) -> yaml 優先]");
+Check("fps = 4 (yaml)", Math.Abs(player.ClipFps(PetState.RunningLeft) - 4) < 1e-9, $"got {player.ClipFps(PetState.RunningLeft)}");
+
 if (args.Length > 1)
 {
     Console.WriteLine("[カスタム素材 (customRoot、再ロード検証込み)]");
