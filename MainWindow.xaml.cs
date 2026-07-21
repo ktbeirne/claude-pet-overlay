@@ -727,7 +727,7 @@ public partial class MainWindow : System.Windows.Window
     // 表示FPSの選択肢は素材の最大クリップレートまでに限定する
     // (8fps 素材に 60/120fps 表示を出しても意味がなく紛らわしいだけ)。
     private int MaxClipFps() =>
-        (int)Math.Ceiling(Enum.GetValues<PetState>().Max(state => _animation.ClipFps(state)));
+        (int)Math.Ceiling(Enum.GetValues<PetState>().Max(state => _animation.RequiredDisplayFps(state)));
 
     private int[] DisplayFpsOptions()
     {

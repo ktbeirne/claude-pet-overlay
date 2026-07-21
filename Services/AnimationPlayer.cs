@@ -351,6 +351,13 @@ public sealed class AnimationPlayer
     public double ClipFps(PetState state) =>
         _clipFps.TryGetValue(state, out var fps) ? fps : DefaultSourceFps;
 
+    // そのクリップを取りこぼしなく表示するのに必要なレート。
+    // durations 指定時は最短フレームから導出する (fps.txt の既定値 60 に引きずられない)。
+    public double RequiredDisplayFps(PetState state) =>
+        _clipTimings.TryGetValue(state, out var timing)
+            ? 1.0 / timing.FrameSeconds.Min()
+            : ClipFps(state);
+
     public double DurationSeconds(PetState state) =>
         _clipTimings.TryGetValue(state, out var timing)
             ? timing.TotalSeconds

@@ -49,7 +49,12 @@ def clean_rgba(image: Image.Image) -> Image.Image:
     return Image.fromarray(array, "RGBA")
 
 
-def main(package: Path, output: Path, fps_overrides: dict[str, float] | None = None) -> None:
+def main(
+    package: Path,
+    output: Path,
+    fps_overrides: dict[str, float] | None = None,
+    duration_overrides: dict[str, list[float]] | None = None,
+) -> None:
     animation = load_animation(package)
     sheet = load_sheet(package)
     atlas = animation["atlas"]
@@ -81,10 +86,29 @@ def main(package: Path, output: Path, fps_overrides: dict[str, float] | None = N
             if not np.asarray(cell)[..., 3].any():
                 raise RuntimeError(f"{state}: cell row={row} col={column} is empty")
             clean_rgba(cell).save(state_dir / f"frame_{position:03d}.png", optimize=True)
-        state_fps = (fps_overrides or {}).get(state, fps)
-        (state_dir / "fps.txt").write_text(f"{state_fps:g}\n", encoding="ascii")
-        print(f"{state}: {len(spec['frames'])} frames @ {state_fps:g}fps", flush=True)
+        durations = (duration_overrides or {}).get(state)
+        if durations is not None:
+            if len(durations) != len(spec["frames"]):
+                raise RuntimeError(
+                    f"{state}: durations count {len(durations)} != frame count {len(spec['frames'])}")
+            (state_dir / "durations.txt").write_text(
+                ",".join(f"{value:g}" for value in durations) + "\n", encoding="ascii")
+            print(f"{state}: {len(spec['frames'])} frames, durations {durations}ms", flush=True)
+        else:
+            state_fps = (fps_overrides or {}).get(state, fps)
+            (state_dir / "fps.txt").write_text(f"{state_fps:g}\n", encoding="ascii")
+            print(f"{state}: {len(spec['frames'])} frames @ {state_fps:g}fps", flush=True)
     print(f"imported -> {output}", flush=True)
+
+
+def parse_durations_override(token: str) -> tuple[str, list[float]]:
+    state, _, value = token.partition("=")
+    if not state or not value:
+        raise argparse.ArgumentTypeError(f"expected state=ms,ms,..., got: {token}")
+    durations = [float(item) for item in value.split(",") if item]
+    if not durations or any(not 10 <= item <= 60000 for item in durations):
+        raise argparse.ArgumentTypeError(f"durations out of range 10-60000ms: {token}")
+    return state, durations
 
 
 def parse_fps_override(token: str) -> tuple[str, float]:
@@ -103,5 +127,8 @@ if __name__ == "__main__":
     parser.add_argument("output", type=Path)
     parser.add_argument("--fps", type=parse_fps_override, action="append", default=[],
                         metavar="STATE=N", help="状態別の再生レート上書き (例: --fps idle=4)")
+    parser.add_argument("--durations", type=parse_durations_override, action="append", default=[],
+                        metavar="STATE=MS,MS,...",
+                        help="状態別のフレーム表示ミリ秒列 (fps より優先。例: --durations idle=3000,350,350,350,350,350)")
     arguments = parser.parse_args()
-    main(arguments.package, arguments.output, dict(arguments.fps))
+    main(arguments.package, arguments.output, dict(arguments.fps), dict(arguments.durations))
