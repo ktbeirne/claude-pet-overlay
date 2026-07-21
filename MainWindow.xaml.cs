@@ -122,6 +122,7 @@ public partial class MainWindow : System.Windows.Window
             var framesRoot = Path.Combine(AppContext.BaseDirectory, "Assets", "Frames");
             _animation.Load(framesRoot, CustomFramesRoot);
             _ = PreloadDragAnimationsAsync();
+            ClampTargetFpsToClips();
             ApplyScale(_settings.Scale, save: false);
             Topmost = _settings.Topmost;
             RestorePosition();
@@ -310,6 +311,8 @@ public partial class MainWindow : System.Windows.Window
             var framesRoot = Path.Combine(AppContext.BaseDirectory, "Assets", "Frames");
             _animation.Load(framesRoot, CustomFramesRoot);
             _ = PreloadDragAnimationsAsync();
+            ClampTargetFpsToClips();
+            _petMenu = null; // 表示FPS候補が素材レートに依存するため次回開時に再構築
             SetDisplayedState(_activityState, "素材を再読み込みしました");
         }
         catch (Exception exception)
@@ -554,7 +557,7 @@ public partial class MainWindow : System.Windows.Window
         menu.Items.Add(motions);
 
         _petFpsMenu = NewMenuItem("表示FPS");
-        foreach (var value in new[] { 8, 16, 30, 32, 60, 120 })
+        foreach (var value in DisplayFpsOptions())
         {
             var captured = value;
             var item = NewMenuItem($"{value} fps", (_, _) =>
@@ -569,7 +572,7 @@ public partial class MainWindow : System.Windows.Window
         menu.Items.Add(_petFpsMenu);
 
         _petScaleMenu = NewMenuItem("表示倍率");
-        foreach (var value in new[] { 1.0, 1.5, 2.0, 2.5, 3.0 })
+        foreach (var value in new[] { 0.75, 1.0, 1.5, 2.0, 2.5, 3.0 })
         {
             var captured = value;
             var sourceScale = CellWidth * value / NormalSourceWidth;
@@ -718,6 +721,32 @@ public partial class MainWindow : System.Windows.Window
         {
             SetDisplayedState(update.State);
             StartTemporaryState(duration.TotalSeconds);
+        }
+    }
+
+    // 表示FPSの選択肢は素材の最大クリップレートまでに限定する
+    // (8fps 素材に 60/120fps 表示を出しても意味がなく紛らわしいだけ)。
+    private int MaxClipFps() =>
+        (int)Math.Ceiling(Enum.GetValues<PetState>().Max(state => _animation.ClipFps(state)));
+
+    private int[] DisplayFpsOptions()
+    {
+        var maxFps = Math.Max(1, MaxClipFps());
+        var options = new[] { 8, 16, 30, 32, 60, 120 }.Where(value => value <= maxFps).ToList();
+        if (options.Count == 0 || options[^1] < maxFps)
+        {
+            options.Add(maxFps);
+        }
+        return [.. options];
+    }
+
+    private void ClampTargetFpsToClips()
+    {
+        var maxOption = DisplayFpsOptions()[^1];
+        if (_settings.TargetFps > maxOption)
+        {
+            _settings.TargetFps = maxOption;
+            _settings.Save();
         }
     }
 
