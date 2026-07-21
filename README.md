@@ -46,7 +46,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\run-pet.ps1
 コピーされ、Release ビルド後に起動します。別のキャラ素材を使う場合は
 `Assets\Frames\<state>\frame_*.png` (+ `fps.txt` / `durations.txt`) を差し替えてください。
 Codex v2 アトラス形式のスプライトシートは `python tools\import_atlas.py <package> <出力>`
-でフレームフォルダへ変換できます。
+でフレームフォルダへ変換できます (`--fps idle=4` で状態別レート上書き)。
 
 フックの登録 (開発環境):
 

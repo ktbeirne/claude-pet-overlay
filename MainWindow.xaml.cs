@@ -118,6 +118,7 @@ public partial class MainWindow : System.Windows.Window
         {
             Directory.CreateDirectory(CustomFramesRoot);
             Directory.CreateDirectory(SoundsRoot);
+            WriteConfigReadmes();
             var framesRoot = Path.Combine(AppContext.BaseDirectory, "Assets", "Frames");
             _animation.Load(framesRoot, CustomFramesRoot);
             _ = PreloadDragAnimationsAsync();
@@ -314,6 +315,51 @@ public partial class MainWindow : System.Windows.Window
         catch (Exception exception)
         {
             SetDisplayedState(PetState.Failed, $"再読み込み失敗: {exception.Message}");
+        }
+    }
+
+    // 設定フォルダを開いただけで使い方が分かるよう、説明ファイルを毎回上書き生成する
+    // (アップデートで書式が変わっても常に最新の説明になる)。
+    private void WriteConfigReadmes()
+    {
+        // メモ帳以外の古いツールでも化けないよう BOM 付き UTF-8 で書く。
+        var utf8Bom = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
+        try
+        {
+            File.WriteAllText(Path.Combine(SoundsRoot, "readme.txt"), string.Join(Environment.NewLine,
+                "【通知音の設定】",
+                "このフォルダに音声ファイル (.wav / .mp3 / .wma) を置くと、状態イベント時に再生されます。",
+                "ファイル名 = 状態名。ファイルを置くだけで即反映 (再起動・再読み込み不要)。",
+                "",
+                "  jumping.wav  … タスク完了の報告時",
+                "  failed.wav   … 失敗時",
+                "  waiting.wav  … 入力待ち (許可確認など) 時",
+                "  waving.wav   … セッション開始時",
+                "  running.wav  … 作業開始時",
+                "  review.wav   … 確認中",
+                "",
+                "オン/オフ: ペットを右クリック → 「通知音を鳴らす」",
+                "同じ種類の音は 3 秒間隔で間引かれます。"), utf8Bom);
+            File.WriteAllText(Path.Combine(CustomFramesRoot, "readme.txt"), string.Join(Environment.NewLine,
+                "【アニメの差し替え】",
+                "このフォルダに素材を置くと、状態単位で標準アニメを上書きできます。",
+                "",
+                "形式1: スプライトシート … <状態名>.png (+ 任意の <状態名>.json)",
+                "  例: idle.png と idle.json → {\"columns\": 8, \"rows\": 1, \"fps\": 16}",
+                "形式2: フレームフォルダ … <状態名>\\frame_000.png, frame_001.png, …",
+                "  (+ 任意の fps.txt = 数値1行 / durations.txt = フレームごとのミリ秒)",
+                "",
+                "状態名: idle running running-right running-left waving jumping failed waiting review",
+                "セルの縦横比は 192:208 (推奨 576x624)、透過 PNG。",
+                "",
+                "反映: ペットを右クリック → 「素材を再読み込み」"), utf8Bom);
+        }
+        catch (IOException)
+        {
+            // 説明ファイルは本体機能に影響しないので書けなくても無視する。
+        }
+        catch (UnauthorizedAccessException)
+        {
         }
     }
 
@@ -523,7 +569,7 @@ public partial class MainWindow : System.Windows.Window
         menu.Items.Add(_petFpsMenu);
 
         _petScaleMenu = NewMenuItem("表示倍率");
-        foreach (var value in new[] { 1.5, 2.0, 2.5, 3.0 })
+        foreach (var value in new[] { 1.0, 1.5, 2.0, 2.5, 3.0 })
         {
             var captured = value;
             var sourceScale = CellWidth * value / NormalSourceWidth;
@@ -703,7 +749,7 @@ public partial class MainWindow : System.Windows.Window
         // Codex ペット (既定で右下 24px マージン・幅 480px) の左隣を初期位置にして
         // 並行起動時に重ならないようにする。
         var workArea = System.Windows.SystemParameters.WorkArea;
-        Left = workArea.Right - Width - 528;
+        Left = workArea.Right - Width - 24;
         Top = workArea.Bottom - Height - 24;
         ClampToWorkArea();
     }

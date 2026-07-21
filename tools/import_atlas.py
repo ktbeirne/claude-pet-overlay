@@ -9,13 +9,14 @@
 9 状態それぞれを <出力>/<state>/frame_XXX.png + fps.txt に展開する。
 look_directions 等のペット未使用行は無視する。
 
-使い方: python import_atlas.py <パッケージdir> <出力framesdir>
+使い方: python import_atlas.py <パッケージdir> <出力framesdir> [--fps state=N ...]
+  --fps idle=4 のように状態別に再生レートを上書きできる (既定はアトラス json の fps)。
 """
 
 from __future__ import annotations
 
+import argparse
 import json
-import sys
 from pathlib import Path
 
 import numpy as np
@@ -48,7 +49,7 @@ def clean_rgba(image: Image.Image) -> Image.Image:
     return Image.fromarray(array, "RGBA")
 
 
-def main(package: Path, output: Path) -> None:
+def main(package: Path, output: Path, fps_overrides: dict[str, float] | None = None) -> None:
     animation = load_animation(package)
     sheet = load_sheet(package)
     atlas = animation["atlas"]
@@ -80,12 +81,27 @@ def main(package: Path, output: Path) -> None:
             if not np.asarray(cell)[..., 3].any():
                 raise RuntimeError(f"{state}: cell row={row} col={column} is empty")
             clean_rgba(cell).save(state_dir / f"frame_{position:03d}.png", optimize=True)
-        (state_dir / "fps.txt").write_text(f"{fps}\n", encoding="ascii")
-        print(f"{state}: {len(spec['frames'])} frames @ {fps}fps", flush=True)
+        state_fps = (fps_overrides or {}).get(state, fps)
+        (state_dir / "fps.txt").write_text(f"{state_fps:g}\n", encoding="ascii")
+        print(f"{state}: {len(spec['frames'])} frames @ {state_fps:g}fps", flush=True)
     print(f"imported -> {output}", flush=True)
 
 
+def parse_fps_override(token: str) -> tuple[str, float]:
+    state, _, value = token.partition("=")
+    if not state or not value:
+        raise argparse.ArgumentTypeError(f"expected state=fps, got: {token}")
+    fps = float(value)
+    if not 1 <= fps <= 240:
+        raise argparse.ArgumentTypeError(f"fps out of range 1-240: {token}")
+    return state, fps
+
+
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        raise SystemExit("usage: import_atlas.py <package-dir> <output-frames-dir>")
-    main(Path(sys.argv[1]), Path(sys.argv[2]))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("package", type=Path)
+    parser.add_argument("output", type=Path)
+    parser.add_argument("--fps", type=parse_fps_override, action="append", default=[],
+                        metavar="STATE=N", help="状態別の再生レート上書き (例: --fps idle=4)")
+    arguments = parser.parse_args()
+    main(arguments.package, arguments.output, dict(arguments.fps))

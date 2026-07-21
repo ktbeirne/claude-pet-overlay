@@ -43,6 +43,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 
 右クリック →「設定フォルダを開く」→ `CustomFrames\` に素材を置き、
 「素材を再読み込み」で反映されます。状態単位で差し替え可能。
+各フォルダ内の `readme.txt` にも同じ手順が書いてあります。
 
 1. **スプライトシート形式**: `idle.png` (フレームがグリッド状に並んだ 1 枚) +
    任意の `idle.json`:
