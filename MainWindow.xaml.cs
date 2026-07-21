@@ -43,6 +43,7 @@ public partial class MainWindow : System.Windows.Window
     private System.Windows.Forms.ToolStripMenuItem? _replayReportMenuItem;
     private System.Windows.Forms.ToolStripMenuItem? _trayClickThroughItem;
     private System.Windows.Controls.ContextMenu? _petMenu;
+    private System.Windows.Controls.MenuItem? _petStatusItem;
     private System.Windows.Controls.MenuItem? _petReplayItem;
     private System.Windows.Controls.MenuItem? _petRecentMenu;
     private System.Windows.Controls.MenuItem? _petFpsMenu;
@@ -528,6 +529,11 @@ public partial class MainWindow : System.Windows.Window
         };
         menu.Opened += (_, _) => RefreshPetMenu();
 
+        _petStatusItem = NewMenuItem("状態");
+        _petStatusItem.IsEnabled = false;
+        menu.Items.Add(_petStatusItem);
+        menu.Items.Add(NewSeparator());
+
         _petReplayItem = NewMenuItem("最新の報告を再表示", (_, _) => ReplayReport(_lastBubbleUpdate));
         menu.Items.Add(_petReplayItem);
         _petRecentMenu = NewMenuItem("最近の完了報告");
@@ -627,6 +633,13 @@ public partial class MainWindow : System.Windows.Window
 
     private void RefreshPetMenu()
     {
+        if (_petStatusItem is not null)
+        {
+            var idleInfo = _animation.FrameCounts().TryGetValue(PetState.Idle, out var idleFrames)
+                ? $"idle {idleFrames}コマ/{_animation.DurationSeconds(PetState.Idle):0.0}s"
+                : "idle 不明";
+            _petStatusItem.Header = $"状態: {_activityState.DisplayName()} · {idleInfo}";
+        }
         if (_petReplayItem is not null)
         {
             _petReplayItem.IsEnabled = _lastBubbleUpdate is not null;
