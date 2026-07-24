@@ -19,7 +19,7 @@ zip を展開したフォルダで PowerShell を開き:
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-- サインイン時に自動起動させる場合は `-Startup` を付ける
+- サインイン時に自動起動します (不要なら `-NoStartup` を付ける)
 - `%LOCALAPPDATA%\ClaudePetOverlay` へ配置され、`~/.claude/settings.json` に
   連携フックが登録されます (既存設定は変更せず、バックアップ
   `settings.json.bak` を作成)

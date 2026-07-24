@@ -17,8 +17,8 @@ Claude Code (全セッション)
 [Releases](../../releases) から zip をダウンロードして展開し:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\install.ps1            # 通常
-powershell -ExecutionPolicy Bypass -File .\install.ps1 -Startup   # + サインイン時自動起動
+powershell -ExecutionPolicy Bypass -File .\install.ps1              # 通常 (サインイン時に自動起動)
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -NoStartup   # 自動起動なし
 ```
 
 要件: Windows 10/11、Claude Code、Python 3.8+ (フック用)。.NET ランタイムは不要。

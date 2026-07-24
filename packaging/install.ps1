@@ -1,10 +1,10 @@
 ﻿# Claude Pet Overlay インストーラ
 # 使い方 (PowerShell):
-#   powershell -ExecutionPolicy Bypass -File .\install.ps1            # 通常インストール
-#   powershell -ExecutionPolicy Bypass -File .\install.ps1 -Startup   # + サインイン時の自動起動
-#   powershell -ExecutionPolicy Bypass -File .\install.ps1 -NoHooks   # フック登録をスキップ
+#   powershell -ExecutionPolicy Bypass -File .\install.ps1              # 通常インストール (サインイン時の自動起動あり)
+#   powershell -ExecutionPolicy Bypass -File .\install.ps1 -NoStartup   # 自動起動を登録しない
+#   powershell -ExecutionPolicy Bypass -File .\install.ps1 -NoHooks     # フック登録をスキップ
 param(
-    [switch]$Startup,
+    [switch]$NoStartup,
     [switch]$NoHooks
 )
 
@@ -46,10 +46,12 @@ if (-not $NoHooks) {
     }
 }
 
-# 5. サインイン時の自動起動 (任意)
+# 5. サインイン時の自動起動 (既定で登録。-NoStartup で登録しない)
 $exePath = Join-Path $appDir 'ClaudePetOverlay.exe'
 $shortcutPath = Join-Path ([Environment]::GetFolderPath('Startup')) 'ClaudePetOverlay.lnk'
-if ($Startup) {
+if ($NoStartup) {
+    if (Test-Path $shortcutPath) { Remove-Item -Force $shortcutPath }
+} else {
     $shell = New-Object -ComObject WScript.Shell
     $shortcut = $shell.CreateShortcut($shortcutPath)
     $shortcut.TargetPath = $exePath
@@ -59,7 +61,24 @@ if ($Startup) {
 }
 
 # 6. 起動
-Start-Process -FilePath $exePath -WorkingDirectory $appDir
+# インストーラを実行したシェル (ターミナル/エディタ内蔵ターミナル等) の子プロセスとして
+# 起動すると、その親アプリを終了・再起動したときにペットも道連れで落ちる。
+# シェル (explorer) に起動させてプロセスツリーから切り離す。
+$launchTarget = if (Test-Path $shortcutPath) { $shortcutPath } else { $exePath }
+$started = $false
+try {
+    Start-Process explorer.exe -ArgumentList "`"$launchTarget`"" -ErrorAction Stop
+    for ($i = 0; $i -lt 24 -and -not $started; $i++) {
+        Start-Sleep -Milliseconds 250
+        $started = [bool](Get-Process ClaudePetOverlay -ErrorAction SilentlyContinue)
+    }
+} catch {
+    # explorer 経由が使えない環境では下のフォールバックで起動する
+}
+if (-not $started) {
+    Start-Process -FilePath $exePath -WorkingDirectory $appDir
+}
+
 Write-Host ''
 Write-Host 'インストール完了。デスクトップ右下にペットが表示されます。'
 Write-Host 'Claude Code への反応は、次に起動するセッションから有効になります。'
